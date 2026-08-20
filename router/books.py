@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -14,84 +14,105 @@ db_dependency = Annotated[Session, Depends(get_db)]
 class BookCreate(BaseModel):
     title: str = Field(..., min_length=1)
     author: str = Field(..., min_length=1)
-    price: float = Field(..., gt=0)
+    amount: int = Field(..., gt=0)  # Quantity (Required)
+    price: float = Field(..., gt=0)  # Price (Required)
 
 
 class BookUpdate(BaseModel):
     title: str | None = None
     author: str | None = None
-    price: float | None = None
+    amount: int | None = Field(default=None, gt=0)
+    price: float | None = Field(default=None, gt=0)
 
 
 class BookResponse(BaseModel):
     id: int
     title: str
     author: str
+    amount: int
     price: float
 
     class Config:
         from_attributes = True
 
 
+@router.get("/", response_model=list[BookResponse])
+def books_list(
+    db: db_dependency,
+    limit: int = Query(default=50, gt=0, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return db.query(BookModel).offset(offset).limit(limit).all()
+
+
+@router.get("/{id}", response_model=BookResponse)
+def books_detail(
+    db: db_dependency,
+    id: int = Path(gt=0),
+):
+    book = db.query(BookModel).filter(BookModel.id == id).first()
+    if book is not None:
+        return book
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Book with id {id} not found!",
+    )
+
+
 @router.post("/", response_model=BookResponse, status_code=status.HTTP_201_CREATED)
-def create_book(book: BookCreate, db: db_dependency):
-    new_book = BookModel(
+def create_book(
+    db: db_dependency,
+    book: BookCreate,
+):
+    db_book = BookModel(
         title=book.title,
         author=book.author,
+        amount=book.amount,
         price=book.price,
     )
-    db.add(new_book)
+    db.add(db_book)
     db.commit()
-    db.refresh(new_book)
-    return new_book
+    db.refresh(db_book)
+    return db_book
 
 
-@router.get("/", response_model=list[BookResponse])
-def get_all_books(db: db_dependency):
-    return db.query(BookModel).all()
+@router.put("/{id}", response_model=BookResponse)
+def update_book(
+    db: db_dependency,
+    id: int,
+    book: BookUpdate,
+):
+    db_book = db.query(BookModel).filter(BookModel.id == id).first()
 
-
-@router.get("/{book_id}", response_model=BookResponse)
-def get_book_by_id(book_id: int, db: db_dependency):
-    book = db.query(BookModel).filter(BookModel.id == book_id).first()
-    if not book:
+    if db_book is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Book with ID {book_id} not found",
-        )
-    return book
-
-
-@router.put("/{book_id}", response_model=BookResponse)
-def update_book(book_id: int, book_data: BookUpdate, db: db_dependency):
-    book = db.query(BookModel).filter(BookModel.id == book_id).first()
-    if not book:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Book with ID {book_id} not found",
+            detail=f"Book with id {id} not found!",
         )
 
-    if book_data.title is not None:
-        book.title = book_data.title
-    if book_data.author is not None:
-        book.author = book_data.author
-    if book_data.price is not None:
-        book.price = book_data.price
+    update_data = book.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_book, key, value)
 
     db.commit()
-    db.refresh(book)
-    return book
+    db.refresh(db_book)
+    return db_book
 
 
-@router.delete("/{book_id}", status_code=status.HTTP_200_OK)
-def delete_book(book_id: int, db: db_dependency):
-    book = db.query(BookModel).filter(BookModel.id == book_id).first()
-    if not book:
+@router.delete("/{id}", status_code=status.HTTP_200_OK)
+def delete_book(
+    id: int,
+    db: db_dependency,
+):
+    db_book = db.query(BookModel).filter(BookModel.id == id).first()
+
+    if db_book is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Book with ID {book_id} not found",
+            detail=f"Book with id {id} not found!",
         )
 
-    db.delete(book)
+    db.delete(db_book)
     db.commit()
-    return {"message": f"Book with ID {book_id} deleted successfully"}
+    return {"message": f"Book with id {id} deleted successfully"}

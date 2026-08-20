@@ -45,7 +45,11 @@ def create_db_tables():
 def seed_db():
     db = SessionLocal()
     if not db.query(BookModel).first():
-        db.add(BookModel(title="Clean Code", author="Robert C. Martin", price=29.99))
+        db.add(
+            BookModel(
+                title="Clean Code", author="Robert C. Martin", amount=1, price=29.99
+            )
+        )
         db.commit()
     db.close()
 
