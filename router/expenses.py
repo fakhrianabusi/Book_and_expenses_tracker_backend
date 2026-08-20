@@ -13,20 +13,23 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 class ExpenseCreate(BaseModel):
     title: str = Field(..., min_length=1)
-    amount: float = Field(..., gt=0)
+    amount: int = Field(..., gt=0)
+    price: float = Field(..., gt=0)
     category: str = Field(default="General")
 
 
 class ExpenseUpdate(BaseModel):
     title: str | None = None
-    amount: float | None = Field(default=None, gt=0)
+    amount: int | None = Field(default=None, gt=0)
+    price: float | None = Field(default=None, gt=0)
     category: str | None = None
 
 
 class ExpenseResponse(BaseModel):
     id: int
     title: str
-    amount: float
+    amount: int
+    price: float
     category: str
 
     class Config:
@@ -44,7 +47,7 @@ def expenses_list(
     query = db.query(ExpenseModel)
 
     if min_price is not None:
-        query = query.filter(ExpenseModel.amount >= min_price)
+        query = query.filter(ExpenseModel.price >= min_price)
 
     if category is not None:
         query = query.filter(ExpenseModel.category == category)
@@ -75,6 +78,7 @@ def expenses_create(
     db_expense = ExpenseModel(
         title=expense.title,
         amount=expense.amount,
+        price=expense.price,
         category=expense.category,
     )
     db.add(db_expense)
